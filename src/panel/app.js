@@ -15,6 +15,7 @@ import {
   parseDevices,
   parseLsEntries,
   parseModuleNames,
+  shellCommand,
 } from "@/lib/adb";
 import { clear, h } from "@/lib/dom";
 import { icon } from "@/lib/icons";
@@ -67,6 +68,7 @@ export class DeviceListPanel {
       appIdRelease: null, // appId + release suffix
       buildTypes: ["debug", "release"], // detected build types
       modules: [":app"], // detected modules
+      shellInput: "", // adb shell input text
     };
   }
 
@@ -272,6 +274,44 @@ export class DeviceListPanel {
     }
   }
 
+  runShellCommand(device) {
+    const cmd = this.state.shellInput.trim();
+    if (!cmd) return;
+    this.setState({ shellInput: "" });
+    muxy.tabs.open({
+      kind: "terminal",
+      command: shellCommand(device.serial, cmd),
+    });
+  }
+
+  shellInput(hasDevice) {
+    const dev = hasDevice ? this.selectedDevice() : null;
+    return h(
+      "div",
+      {
+        class: [
+          "flex shrink-0 items-center gap-2 border-t border-border px-3 py-2",
+          hasDevice ? "" : "opacity-40 pointer-events-none",
+        ].join(" "),
+      },
+      h("span", { class: "shrink-0 text-[11px] font-medium text-muted-foreground" }, "$"),
+      h("input", {
+        type: "text",
+        placeholder: hasDevice ? "adb shell …" : "Select a device to run shell commands",
+        class:
+          "flex-1 min-w-0 rounded border-0 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50",
+        value: this.state.shellInput,
+        oninput: (e) => this.setState({ shellInput: e.target.value }),
+        onkeydown: (e) => {
+          if (e.key === "Enter" && dev) {
+            e.preventDefault();
+            this.runShellCommand(dev);
+          }
+        },
+      }),
+    );
+  }
+
   showLogcat(device) {
     const items = [];
     // Use the effective debug app ID (appId + suffix) for "This app only"
@@ -410,6 +450,7 @@ export class DeviceListPanel {
       { class: "flex h-full flex-col" },
       this.devicesSection(hasBrowser),
       hasBrowser ? this.fileBrowser() : null,
+      this.shellInput(hasBrowser),
     );
   }
 

@@ -408,6 +408,19 @@ export function parentPath(path) {
   return p.slice(0, idx + 1);
 }
 
+/**
+ * Build an `adb shell <command>` string for a device.
+ * Quotes the command so the shell on your host passes it through correctly.
+ *
+ * @param {string} serial
+ * @param {string} command  Shell command to run on the device (e.g. "ls -l /sdcard")
+ * @returns {string}
+ */
+export function shellCommand(serial, command) {
+  const s = shellQuote(serial);
+  return `adb -s ${s} shell ${command}`;
+}
+
 function shellQuote(value) {
   // Device serials are normally [A-Za-z0-9._-]; quote defensively anyway.
   if (/^[A-Za-z0-9._-]+$/.test(value)) return value;
