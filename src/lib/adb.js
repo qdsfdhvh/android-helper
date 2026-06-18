@@ -113,18 +113,38 @@ export function installAndLogCommand(serial, opts = {}) {
  * Build the `adb logcat` command for a device. Streamed in a terminal tab, so
  * variants just tweak the buffer/filter.
  *
+ * Supported variants:
+ *  - `"all"`          — no filter
+ *  - `"error"`        — `*:E` only
+ *  - `"crash"`        — `-b crash` buffer
+ *  - `"buffer:main"`   — `-b main` buffer
+ *  - `"buffer:system"` — `-b system` buffer
+ *  - `"app"`          — filter by package PID
+ *  - `"custom"`       — uses `filter` field to `grep`
+ *
  * @param {string} serial
- * @param {"all"|"error"|"crash"} [variant]
+ * @param {string} [variant="all"]
+ * @param {string|null} [pkg=null]  Package name for "app" variant
+ * @param {string} [filter=""]      Grep filter for "custom" variant
  * @returns {string}
  */
-export function logcatCommand(serial, variant = "all", pkg = null) {
+export function logcatCommand(serial, variant = "all", pkg = null, filter = "") {
   const s = shellQuote(serial);
   const base = `adb -s ${s} logcat`;
   switch (variant) {
     case "error":
       return `${base} *:E`;
     case "crash":
+    case "buffer:crash":
       return `${base} -b crash`;
+    case "buffer:main":
+      return `${base} -b main`;
+    case "buffer:system":
+      return `${base} -b system`;
+    case "custom":
+      return filter
+        ? `${base} -v brief -T 1 | ${shellQuote(`grep -i --line-buffered ${filter}`)}`
+        : base;
     case "app": {
       if (!pkg) return base;
       const p = shellQuote(pkg);
@@ -158,6 +178,76 @@ export function devicePullCommand(serial, remotePath) {
     "echo",
     `echo "Done — file pulled to ~/Downloads/android-pull/$(basename ${r})"`,
   ].join(" && \\\n");
+}
+
+/**
+ * Build a command that prints a formatted device info summary in the terminal.
+ * Fetches model, Android version, API level, arch, density, resolution, IP, and
+ * battery from the device via getprop / dumpsys.
+ *
+ * @param {string} serial
+ * @returns {string}
+ */
+export function deviceInfoCommand(serial) {
+  const s = shellQuote(serial);
+  // We run one adb shell invocation that echoes data line by line.
+  const info = [
+    "echo '=== Device Info ==='",
+    "echo",
+    'echo "Model:     $(getprop ro.product.model)"',
+    'echo "Android:   $(getprop ro.build.version.release)"',
+    'echo "API:       $(getprop ro.build.version.sdk)"',
+    'echo "Arch:      $(getprop ro.product.cpu.abi)"',
+    'echo "Density:   $(wm density 2>/dev/null | head -1 || echo \"N/A\")"',
+    'echo "Res:       $(wm size 2>/dev/null | head -1 || echo \"N/A\")"',
+    'echo "IP:        $(ip -4 addr show wlan0 2>/dev/null | grep -oE \"inet [0-9.]+\" | cut -d\" \" -f2 || echo \"N/A\")"',
+    'echo "Battery:   $(dumpsys battery 2>/dev/null | grep -E \"level|status|temperature\" | paste -sd\", \" || echo \"N/A\")"',
+    "echo",
+    "echo '=== Fingerprint ==='",
+    "echo",
+    'echo "$(getprop ro.build.fingerprint)"',
+    "echo",
+    "echo '=== All properties (getprop) ==='",
+    "getprop | sort",
+  ].join(" && \\\n    ");
+  return `adb -s ${s} shell sh -c ${shellQuote(info)}`;
+}
+
+/**
+ * Build a shell command that runs a specific action against a package on the
+ * device. Supported actions:
+ *   - `"forcestop"` → `am force-stop <pkg>`
+ *   - `"cleardata"` → `pm clear <pkg>`
+ *   - `"uninstall"` → `pm uninstall <pkg>` (keeps data)
+ *
+ * @param {string} serial
+ * @param {"forcestop"|"cleardata"|"uninstall"} action
+ * @param {string} packageName
+ * @returns {string}
+ */
+export function appActionCommand(serial, action, packageName) {
+  const s = shellQuote(serial);
+  const p = shellQuote(packageName);
+  const label = { forcestop: "Force stop", cleardata: "Clear data", uninstall: "Uninstall" }[action] || action;
+  switch (action) {
+    case "forcestop":
+      return [
+        `adb -s ${s} shell am force-stop ${p}`,
+        `echo "${label}: ${packageName}"`,
+      ].join(" && \\\n");
+    case "cleardata":
+      return [
+        `adb -s ${s} shell pm clear ${p}`,
+        `echo "${label}: ${packageName}"`,
+      ].join(" && \\\n");
+    case "uninstall":
+      return [
+        `adb -s ${s} uninstall ${p}`,
+        `echo "${label}: ${packageName}"`,
+      ].join(" && \\\n");
+    default:
+      return `echo "Unknown action: ${action}"`;
+  }
 }
 
 /**

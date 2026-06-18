@@ -1,6 +1,8 @@
 import {
+  appActionCommand,
   buildInstallCommand,
   combineApplicationId,
+  deviceInfoCommand,
   deviceLsCommand,
   devicePullCommand,
   installAndLogCommand,
@@ -156,6 +158,56 @@ export class DeviceListPanel {
     }
   }
 
+  showDeviceInfo(device) {
+    muxy.tabs.open({
+      kind: "terminal",
+      command: deviceInfoCommand(device.serial),
+    });
+  }
+
+  showAppActions(device) {
+    const pkg = this.state.appIdDebug || this.state.appId;
+    if (!pkg) {
+      muxy.notifications?.show?.({
+        title: "No package detected",
+        body: "Open an Android project to enable app actions.",
+      });
+      return;
+    }
+    muxy.modal.open({
+      title: "App — " + pkg,
+      placeholder: "Choose action…",
+      items: [
+        {
+          id: "forcestop",
+          title: "Force stop",
+          subtitle: `adb shell am force-stop ${pkg}`,
+        },
+        {
+          id: "cleardata",
+          title: "Clear data",
+          subtitle: `adb shell pm clear ${pkg}`,
+        },
+        {
+          id: "uninstall",
+          title: "Uninstall",
+          subtitle: `adb uninstall ${pkg}`,
+        },
+      ],
+      onSelect: (choice) => {
+        if (!choice) return;
+        muxy.tabs.open({
+          kind: "terminal",
+          command: appActionCommand(
+            device.serial,
+            choice.id,
+            pkg,
+          ),
+        });
+      },
+    });
+  }
+
   async install(device) {
     try {
       const buildTypes = this.state.buildTypes || ["debug", "release"];
@@ -234,7 +286,10 @@ export class DeviceListPanel {
     items.push(
       { id: "all", title: "All", subtitle: "All log levels" },
       { id: "error", title: "Only errors", subtitle: "*:E" },
-      { id: "crash", title: "Crash buffer", subtitle: "-b crash" },
+      { id: "buffer:main", title: "Main buffer", subtitle: "-b main (default)" },
+      { id: "buffer:system", title: "System buffer", subtitle: "-b system" },
+      { id: "buffer:crash", title: "Crash buffer", subtitle: "-b crash" },
+      { id: "custom", title: "Custom filter…", subtitle: "grep for a keyword" },
     );
 
     if (!window.muxy?.modal) {
@@ -250,6 +305,20 @@ export class DeviceListPanel {
       })
       .then((choice) => {
         if (!choice) return;
+        if (choice.id === "custom") {
+          const filter = prompt("Enter log filter keyword:");
+          if (!filter) return;
+          muxy.tabs.open({
+            kind: "terminal",
+            command: logcatCommand(
+              device.serial,
+              "custom",
+              null,
+              filter,
+            ),
+          });
+          return;
+        }
         const pkg =
           choice.id === "app" ? effectiveAppId : null;
         muxy.tabs.open({
@@ -408,7 +477,15 @@ export class DeviceListPanel {
         { class: "flex min-w-0 flex-col" },
         h(
           "span",
-          { class: "truncate text-[12px] text-foreground" },
+          {
+            class:
+              "truncate text-[12px] text-foreground cursor-pointer hover:text-primary",
+            onclick: (e) => {
+              e.stopPropagation();
+              this.showDeviceInfo(device);
+            },
+            title: "Show device info",
+          },
           device.model || device.serial,
         ),
         h(
@@ -437,6 +514,30 @@ export class DeviceListPanel {
           },
           icon("logs", 13),
           "Log",
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            disabled: !ready,
+            title: ready
+              ? "App actions (force stop, clear data)"
+              : "",
+            class:
+              "flex h-7 w-7 items-center justify-center rounded-md bg-surface text-[15px] text-foreground outline-none hover:bg-accent disabled:opacity-40",
+            onclick: ready
+              ? (e) => {
+                  e.stopPropagation();
+                  if (
+                    !this.state.appId &&
+                    !this.state.appIdDebug
+                  )
+                    return;
+                  this.showAppActions(device);
+                }
+              : null,
+          },
+          "⋯",
         ),
         h(
           "button",
