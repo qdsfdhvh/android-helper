@@ -14,7 +14,6 @@ import {
   parseBuildTypes,
   parseDevices,
   parseLsEntries,
-  parseModuleNames,
   shellCommand,
 } from "@/lib/adb";
 import { clear, h } from "@/lib/dom";
@@ -114,21 +113,7 @@ export class DeviceListPanel {
     } catch {
       /* ignore */
     }
-    // Detect modules from settings.gradle
-    try {
-      for (const name of ["settings.gradle", "settings.gradle.kts"]) {
-        try {
-          const text = await muxy.files.read(name);
-          if (text && text.length > 5) {
-            const modules = parseModuleNames(text);
-            this.setState({ modules });
-            break;
-          }
-        } catch {/* not found */}
-      }
-    } catch {
-      /* ignore */
-    }
+
   }
 
   // ---- devices ----------------------------------------------------------
@@ -213,7 +198,6 @@ export class DeviceListPanel {
   async install(device) {
     try {
       const buildTypes = this.state.buildTypes || ["debug", "release"];
-      const modules = this.state.modules || [];
 
       // Resolve the effective package name for this build type
       const pkgForBuildType = (bt) => {
@@ -222,46 +206,30 @@ export class DeviceListPanel {
         return this.state.appId;
       };
 
-      // Quick path: single variant, no picker needed
-      // modules.length <= 1 handles both "no settings.gradle" (no prefix)
-      // and "single detected module"
-      if (buildTypes.length === 1 && modules.length <= 1) {
+      // Quick path: single build type, no picker needed
+      if (buildTypes.length === 1) {
         const bt = buildTypes[0];
-        const task = installTaskName(bt);
         await muxy.tabs.open({
           kind: "terminal",
           command: installAndLogCommand(device.serial, {
-            task,
-            module: modules.length === 1 ? modules[0] : "",
+            task: installTaskName(bt),
             packageName: pkgForBuildType(bt),
           }),
         });
         return;
       }
 
-      // Build picker items: all buildType × module combinations
-      const items = [];
-      if (modules.length === 0) {
-        // No modules detected — just show build types without prefix
-        for (const bt of buildTypes) {
-          items.push({
-            id: `|${bt}`,
-            title: `install${capitalize(bt)}`,
-            subtitle: `${bt}${pkgForBuildType(bt) ? " • " + pkgForBuildType(bt) : ""}`,
-          });
-        }
-      } else {
-        for (const mod of modules) {
-          const shortMod = mod.replace(/^:/, "");
-          for (const bt of buildTypes) {
-            items.push({
-              id: `${bt}|${mod}`,
-            title: `${mod !== ":app" ? `${shortMod} — ` : ""}install${capitalize(bt)}`,
-              subtitle: `${mod} / ${bt}${pkgForBuildType(bt) ? " • " + pkgForBuildType(bt) : ""}`,
-            });
-          }
-        }
-      }
+      // Build picker items: build types + custom task option
+      const items = buildTypes.map((bt) => ({
+        id: bt,
+        title: `install${capitalize(bt)}`,
+        subtitle: pkgForBuildType(bt) || bt,
+      }));
+      items.push({
+        id: "__custom__",
+        title: "Custom task…",
+        subtitle: "Type a Gradle task name (e.g. :androidApp:installDebug)",
+      });
 
       const choice = await muxy.modal.open({
         title: "Build & Install",
@@ -270,13 +238,21 @@ export class DeviceListPanel {
       });
       if (!choice) return;
 
-      const [bt, mod] = choice.id.split("|");
+      if (choice.id === "__custom__") {
+        const customTask = prompt("Enter Gradle task:");
+        if (!customTask) return;
+        await muxy.tabs.open({
+          kind: "terminal",
+          command: buildInstallCommand(device.serial, { task: customTask }),
+        });
+        return;
+      }
+
       await muxy.tabs.open({
         kind: "terminal",
         command: installAndLogCommand(device.serial, {
-          task: installTaskName(bt),
-          module: mod || "",
-          packageName: pkgForBuildType(bt),
+          task: installTaskName(choice.id),
+          packageName: pkgForBuildType(choice.id),
         }),
       });
     } catch (err) {
