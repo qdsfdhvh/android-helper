@@ -303,7 +303,7 @@ export function combineApplicationId(appId, suffix) {
  * @returns {string[]}
  */
 export function parseModuleNames(text) {
-  if (!text) return [":app"];
+  if (!text) return [];
   const mods = [];
   // Match all include lines and extract all quoted module names
   const lineRe = /^\s*include\b[^\n]*$/gm;
@@ -316,7 +316,7 @@ export function parseModuleNames(text) {
       if (!mods.includes(q[1])) mods.push(q[1]);
     }
   }
-  return mods.length > 0 ? mods : [":app"];
+  return mods.length > 0 ? mods : [];
 }
 
 /**

@@ -67,7 +67,7 @@ export class DeviceListPanel {
       appIdDebug: null, // appId + debug suffix (effective debug package)
       appIdRelease: null, // appId + release suffix
       buildTypes: ["debug", "release"], // detected build types
-      modules: [":app"], // detected modules
+      modules: [], // detected modules (empty = root project, no prefix)
       shellInput: "", // adb shell input text
     };
   }
@@ -213,7 +213,7 @@ export class DeviceListPanel {
   async install(device) {
     try {
       const buildTypes = this.state.buildTypes || ["debug", "release"];
-      const modules = this.state.modules || [":app"];
+      const modules = this.state.modules || [];
 
       // Resolve the effective package name for this build type
       const pkgForBuildType = (bt) => {
@@ -223,14 +223,16 @@ export class DeviceListPanel {
       };
 
       // Quick path: single variant, no picker needed
-      if (buildTypes.length === 1 && modules.length === 1) {
+      // modules.length <= 1 handles both "no settings.gradle" (no prefix)
+      // and "single detected module"
+      if (buildTypes.length === 1 && modules.length <= 1) {
         const bt = buildTypes[0];
         const task = installTaskName(bt);
         await muxy.tabs.open({
           kind: "terminal",
           command: installAndLogCommand(device.serial, {
             task,
-            module: modules[0],
+            module: modules.length === 1 ? modules[0] : "",
             packageName: pkgForBuildType(bt),
           }),
         });
@@ -239,14 +241,25 @@ export class DeviceListPanel {
 
       // Build picker items: all buildType × module combinations
       const items = [];
-      for (const mod of modules) {
+      if (modules.length === 0) {
+        // No modules detected — just show build types without prefix
         for (const bt of buildTypes) {
-          const shortMod = mod.replace(/^:/, "");
           items.push({
-            id: `${bt}|${mod}`,
-            title: `${mod !== ":app" ? `${shortMod} — ` : ""}install${capitalize(bt)}`,
-            subtitle: `${mod} / ${bt}${pkgForBuildType(bt) ? " • " + pkgForBuildType(bt) : ""}`,
+            id: `|${bt}`,
+            title: `install${capitalize(bt)}`,
+            subtitle: `${bt}${pkgForBuildType(bt) ? " • " + pkgForBuildType(bt) : ""}`,
           });
+        }
+      } else {
+        for (const mod of modules) {
+          const shortMod = mod.replace(/^:/, "");
+          for (const bt of buildTypes) {
+            items.push({
+              id: `${bt}|${mod}`,
+            title: `${mod !== ":app" ? `${shortMod} — ` : ""}install${capitalize(bt)}`,
+              subtitle: `${mod} / ${bt}${pkgForBuildType(bt) ? " • " + pkgForBuildType(bt) : ""}`,
+            });
+          }
         }
       }
 
@@ -262,7 +275,7 @@ export class DeviceListPanel {
         kind: "terminal",
         command: installAndLogCommand(device.serial, {
           task: installTaskName(bt),
-          module: mod,
+          module: mod || "",
           packageName: pkgForBuildType(bt),
         }),
       });
