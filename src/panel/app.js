@@ -140,6 +140,11 @@ export class DeviceListPanel {
               .split("\n")
               .map((s) => s.trim())
               .filter(Boolean)
+
+              .map((s) => {
+                const [name, status, target] = s.split("|");
+                return { name, status: status || "ready", target };
+              })
           : [];
 
       // Keep the current selection only if it's still connected.
@@ -564,7 +569,7 @@ export class DeviceListPanel {
             },
             "emulator",
           )
-        : null,
+        : h("span", { class: "mt-0.5 shrink-0 self-start rounded bg-green-500/20 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-green-400" }, "device"),
       ),
       h(
         "div",
@@ -633,42 +638,39 @@ export class DeviceListPanel {
     );
   }
 
-  avdRow(avdName) {
+  avdRow(avd) {
+    const name = avd.name || avd;
+    const status = avd.status || "ready";
+    const target = avd.target || "";
+    const label = name.replace(/_/g, " ");
+    const isReady = status === "ready";
+    const statusText = status === "missing_img"
+      ? "missing system image"
+      : target
+        ? `offline \u00b7 ${target.replace("android-", "API ")}`
+        : "offline";
+    const statusColor = status === "missing_img"
+      ? "text-red-400/70"
+      : "text-muted-foreground";
+    const actionBtn = isReady
+      ? h("button", { type: "button", title: `Launch ${name}`, class: "flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-foreground outline-none hover:bg-accent", onclick: (e) => { e.stopPropagation(); this.launchAvd(name); } }, "Launch")
+      : h("span", { class: "text-[10px] text-muted-foreground/50" }, "install image");
     return h(
       "div",
       {
-        class:
-          "flex cursor-default items-center gap-2 border-b border-border px-2.5 py-2 text-[12px] opacity-50",
+        class: [
+          "flex cursor-default items-center gap-2 border-b border-border px-2.5 py-2 text-[12px]",
+          isReady ? "opacity-50" : "opacity-40",
+        ].join(" "),
       },
       icon("smartphone", 13, "text-muted-foreground"),
       h(
         "div",
         { class: "min-w-0 flex-1" },
-        h(
-          "span",
-          { class: "block truncate text-muted-foreground" },
-          avdName.replace(/_/g, " "),
-        ),
-        h(
-          "span",
-          { class: "text-[10px] text-muted-foreground" },
-          "offline",
-        ),
+        h("span", { class: "block truncate text-muted-foreground" }, label),
+        h("span", { class: `text-[10px] ${statusColor}` }, statusText),
       ),
-      h(
-        "button",
-        {
-          type: "button",
-          title: `Launch ${avdName}`,
-          class:
-            "flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-foreground outline-none hover:bg-accent",
-          onclick: (e) => {
-            e.stopPropagation();
-            this.launchAvd(avdName);
-          },
-        },
-        "Launch",
-      ),
+      actionBtn,
     );
   }
 

@@ -427,15 +427,19 @@ export function shellCommand(serial, command) {
  * @returns {string}
  */
 export function listAvdsCommand() {
-  // Read AVD ini files, then check that config.ini has image.sysdir.1
-  // (verifies the system image is installed, not just the AVD definition).
+  // Read AVD ini files, check system image + target, output: "name|status|target"
+  // status: "ready" or "missing_img"
+  // target: SDK version (e.g. android-34)
   // No emulator binary in PATH needed — reads files directly.
   return [
     "for f in ~/.android/avd/*.ini; do",
     '  n=$(basename "$f" .ini)',
     '  c="$HOME/.android/avd/${n}.avd/config.ini"',
     "  if [ -f \"$c\" ] && grep -q '^image\\.sysdir\\.1' \"$c\" 2>/dev/null; then",
-    "    echo \"$n\"",
+    "    t=$(grep '^target=' \"$c\" 2>/dev/null | head -1 | cut -d= -f2)",
+    "    echo \"$n|ready|$t\"",
+    "  else",
+    "    echo \"$n|missing_img|\"",
     "  fi",
     "done",
   ].join("\n");
