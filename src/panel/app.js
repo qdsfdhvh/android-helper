@@ -654,7 +654,7 @@ export class DeviceListPanel {
       : "text-muted-foreground";
     const actionBtn = isReady
       ? h("button", { type: "button", title: `Launch ${name}`, class: "flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-foreground outline-none hover:bg-accent", onclick: (e) => { e.stopPropagation(); this.launchAvd(name); } }, "Launch")
-      : h("span", { class: "text-[10px] text-muted-foreground/50" }, "install image");
+      : h("button", { type: "button", title: "Open Android Studio to install system image", class: "flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[10px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground", onclick: (e) => { e.stopPropagation(); muxy.exec(["open", "-a", "Android Studio"]); } }, "install image");
     return h(
       "div",
       {
