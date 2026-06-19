@@ -427,7 +427,18 @@ export function shellCommand(serial, command) {
  * @returns {string}
  */
 export function listAvdsCommand() {
-  return `emulator -list-avds 2>/dev/null`;
+  // Read AVD ini files, then check that config.ini has image.sysdir.1
+  // (verifies the system image is installed, not just the AVD definition).
+  // No emulator binary in PATH needed — reads files directly.
+  return [
+    "for f in ~/.android/avd/*.ini; do",
+    '  n=$(basename "$f" .ini)',
+    '  c="$HOME/.android/avd/${n}.avd/config.ini"',
+    "  if [ -f \"$c\" ] && grep -q '^image\\.sysdir\\.1' \"$c\" 2>/dev/null; then",
+    "    echo \"$n\"",
+    "  fi",
+    "done",
+  ].join("\n");
 }
 
 /**
