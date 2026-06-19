@@ -421,6 +421,28 @@ export function shellCommand(serial, command) {
   return `adb -s ${s} shell ${command}`;
 }
 
+/**
+ * Returns a command that lists available Android Virtual Devices via `emulator -list-avds`.
+ *
+ * @returns {string}
+ */
+export function listAvdsCommand() {
+  return `emulator -list-avds 2>/dev/null`;
+}
+
+/**
+ * Returns a command that launches an AVD in a new terminal.
+ * The `-no-snapshot-load` flag forces a cold boot (clean start).
+ * Running in the background (`&`) so the terminal can be reused.
+ *
+ * @param {string} avdName
+ * @returns {string}
+ */
+export function launchAvdCommand(avdName) {
+  const a = shellQuote(avdName);
+  return `echo "Starting ${avdName} (cold boot)..." && emulator -avd ${a} -no-snapshot-load`;
+}
+
 function shellQuote(value) {
   // Device serials are normally [A-Za-z0-9._-]; quote defensively anyway.
   if (/^[A-Za-z0-9._-]+$/.test(value)) return value;

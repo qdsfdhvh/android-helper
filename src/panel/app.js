@@ -6,7 +6,8 @@ import {
   deviceLsCommand,
   devicePullCommand,
   installAndLogCommand,
-  joinDir,
+  launchAvdCommand,
+  listAvdsCommand,
   logcatCommand,
   parentPath,
   parseApplicationId,
@@ -150,6 +151,51 @@ export class DeviceListPanel {
       kind: "terminal",
       command: deviceInfoCommand(device.serial),
     });
+  }
+
+  async launchEmulator() {
+    if (!window.muxy?.exec) {
+      muxy.notifications?.show?.({
+        title: "Emulator not available",
+        body: "Try launching from Android Studio instead.",
+      });
+      return;
+    }
+    try {
+      const res = await muxy.exec(["sh", "-c", listAvdsCommand()]);
+      const avds = (res?.stdout ?? "")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (avds.length === 0) {
+        muxy.notifications?.show?.({
+          title: "No AVDs found",
+          body: "Create a virtual device in Android Studio first.",
+        });
+        return;
+      }
+
+      const choice = await muxy.modal.open({
+        title: "Launch Emulator",
+        placeholder: "Select AVD…",
+        items: avds.map((name) => ({
+          id: name,
+          title: name,
+          subtitle: `emulator -avd ${name}`,
+        })),
+      });
+      if (!choice) return;
+
+      muxy.tabs.open({
+        kind: "terminal",
+        command: launchAvdCommand(choice.id),
+      });
+    } catch (err) {
+      muxy.notifications?.show?.({
+        title: "Couldn't list AVDs",
+        body: String(err?.message ?? err),
+      });
+    }
   }
 
   showAppActions(device) {
@@ -457,6 +503,9 @@ export class DeviceListPanel {
   }
 
   devicesHeader() {
+    const hasEmu = this.state.devices.some(
+      (d) => d.serial.startsWith("emulator-"),
+    );
     return h(
       "div",
       {
@@ -470,6 +519,20 @@ export class DeviceListPanel {
         { class: "ml-auto font-mono text-[11px] font-normal text-muted-foreground" },
         this.state.status === "ready" ? String(this.state.devices.length) : "",
       ),
+      hasEmu
+        ? null
+        : h(
+            "button",
+            {
+              type: "button",
+              title: "Launch an Android emulator",
+              class:
+                "ml-2 flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground",
+              onclick: () => this.launchEmulator(),
+            },
+            icon("smartphone", 11),
+            " Emulator",
+          ),
     );
   }
 
@@ -523,6 +586,16 @@ export class DeviceListPanel {
           { class: "truncate font-mono text-[10px] text-muted-foreground" },
           ready ? device.serial : `${device.serial} · ${device.state}`,
         ),
+      device.serial.startsWith("emulator-")
+        ? h(
+            "span",
+            {
+              class:
+                "mt-0.5 shrink-0 self-start rounded bg-accent/30 px-1.5 py-[1px] text-[9px] font-medium uppercase tracking-wider text-muted-foreground",
+            },
+            "emulator",
+          )
+        : null,
       ),
       h(
         "div",
