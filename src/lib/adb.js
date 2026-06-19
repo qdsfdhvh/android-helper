@@ -427,21 +427,26 @@ export function shellCommand(serial, command) {
  * @returns {string}
  */
 export function listAvdsCommand() {
-  // Read AVD ini files, check system image + target, output: "name|status|target"
-  // status: "ready" or "missing_img"
-  // target: SDK version (e.g. android-34)
+  // Read AVD ini files, check system image DIR exists + target
+  // Output: "name|status|target" — status: "ready" or "missing_img"
   // No emulator binary in PATH needed — reads files directly.
   return [
     "for f in ~/.android/avd/*.ini; do",
     '  n=$(basename "$f" .ini)',
     '  c="$HOME/.android/avd/${n}.avd/config.ini"',
-    "  if [ -f \"$c\" ] && grep -q '^image\\.sysdir\\.1' \"$c\" 2>/dev/null; then",
-    "    t=$(grep '^target=' \"$c\" 2>/dev/null | head -1 | cut -d= -f2)",
-    "    echo \"$n|ready|$t\"",
-    "  else",
-    "    echo \"$n|missing_img|\"",
-    "  fi",
-    "done",
+    '  if [ -f "$c" ] && grep -q "^image\\.sysdir\\.1" "$c" 2>/dev/null; then',
+    '    sdir=$(grep "^image\\.sysdir\\.1" "$c" | head -1 | cut -d= -f2)',
+    '    for sdk in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$HOME/Library/Android/sdk"; do',
+    '      [ -d "$sdk/$sdir" ] || continue',
+    '      t=$(grep "^target=" "$c" | head -1 | cut -d= -f2)',
+    '      echo "$n|ready|$t"',
+    '      found=1; break',
+    '    done',
+    '    [ -z "$found" ] && echo "$n|missing_img|"',
+    '  else',
+    '    echo "$n|missing_img|"',
+    '  fi',
+    'done',
   ].join("\n");
 }
 
