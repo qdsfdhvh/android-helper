@@ -69,6 +69,7 @@ export class DeviceListPanel {
       buildTypes: ["debug", "release"], // detected build types
       modules: [], // detected modules (empty = root project, no prefix)
       shellInput: "", // adb shell input text
+      avds: [], // offline AVD names (for in-line launch)
     };
   }
 
@@ -122,17 +123,31 @@ export class DeviceListPanel {
   async loadDevices() {
     this.setState({ status: "loading", error: null });
     try {
-      const result = await muxy.exec(["adb", "devices", "-l"]);
-      const devices = parseDevices(result?.stdout ?? "");
-      if (!devices.length && result?.stderr) {
-        this.setState({ status: "error", error: result.stderr.trim(), devices: [] });
+      const [devicesRes, avdsRes] = await Promise.allSettled([
+        muxy.exec(["adb", "devices", "-l"]),
+        muxy.exec(["sh", "-c", listAvdsCommand()]),
+      ]);
+
+      const devices = parseDevices(devicesRes.status === "fulfilled" ? devicesRes?.value?.stdout ?? "" : "");
+      if (!devices.length && devicesRes?.value?.stderr) {
+        this.setState({ status: "error", error: devicesRes.value.stderr.trim(), devices: [] });
         return;
       }
+
+      const avds =
+        avdsRes.status === "fulfilled"
+          ? (avdsRes.value?.stdout ?? "")
+              .split("\n")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+
       // Keep the current selection only if it's still connected.
       const stillThere = devices.some((d) => d.serial === this.state.selected && d.ready);
       this.setState({
         status: "ready",
         devices,
+        avds,
         error: null,
         selected: stillThere ? this.state.selected : null,
       });
@@ -153,49 +168,11 @@ export class DeviceListPanel {
     });
   }
 
-  async launchEmulator() {
-    if (!window.muxy?.exec) {
-      muxy.notifications?.show?.({
-        title: "Emulator not available",
-        body: "Try launching from Android Studio instead.",
-      });
-      return;
-    }
-    try {
-      const res = await muxy.exec(["sh", "-c", listAvdsCommand()]);
-      const avds = (res?.stdout ?? "")
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (avds.length === 0) {
-        muxy.notifications?.show?.({
-          title: "No AVDs found",
-          body: "Create a virtual device in Android Studio first.",
-        });
-        return;
-      }
-
-      const choice = await muxy.modal.open({
-        title: "Launch Emulator",
-        placeholder: "Select AVD…",
-        items: avds.map((name) => ({
-          id: name,
-          title: name,
-          subtitle: `emulator -avd ${name}`,
-        })),
-      });
-      if (!choice) return;
-
-      muxy.tabs.open({
-        kind: "terminal",
-        command: launchAvdCommand(choice.id),
-      });
-    } catch (err) {
-      muxy.notifications?.show?.({
-        title: "Couldn't list AVDs",
-        body: String(err?.message ?? err),
-      });
-    }
+  async launchAvd(avdName) {
+    muxy.tabs.open({
+      kind: "terminal",
+      command: launchAvdCommand(avdName),
+    });
   }
 
   showAppActions(device) {
@@ -503,9 +480,8 @@ export class DeviceListPanel {
   }
 
   devicesHeader() {
-    const hasEmu = this.state.devices.some(
-      (d) => d.serial.startsWith("emulator-"),
-    );
+    const deviceCount = this.state.devices.length;
+    const avdCount = this.state.avds.length;
     return h(
       "div",
       {
@@ -517,36 +493,29 @@ export class DeviceListPanel {
       h(
         "span",
         { class: "ml-auto font-mono text-[11px] font-normal text-muted-foreground" },
-        this.state.status === "ready" ? String(this.state.devices.length) : "",
+        this.state.status === "ready" ? String(deviceCount + avdCount || "") : "",
       ),
-      hasEmu
-        ? null
-        : h(
-            "button",
-            {
-              type: "button",
-              title: "Launch an Android emulator",
-              class:
-                "ml-2 flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-muted-foreground outline-none hover:bg-accent hover:text-foreground",
-              onclick: () => this.launchEmulator(),
-            },
-            icon("smartphone", 11),
-            " Emulator",
-          ),
     );
   }
 
   devicesBody() {
     if (this.state.status === "loading") return message("Looking for devices…");
     if (this.state.status === "error") return this.errorView();
-    if (!this.state.devices.length) {
-      return message("No devices connected. Plug in a device or start an emulator, then Refresh.");
+
+    const rows = this.state.devices.map((d) => this.deviceRow(d));
+    // Add offline AVDs inline — gray, with a Launch button
+    const runningSerials = new Set(this.state.devices.map((d) => d.serial));
+    for (const avd of this.state.avds || []) {
+      rows.push(this.avdRow(avd));
     }
-    return h(
-      "div",
-      { class: "flex flex-col" },
-      this.state.devices.map((d) => this.deviceRow(d)),
-    );
+
+    if (rows.length === 0) {
+      return message(
+        "No devices or emulators found. " +
+          "Make sure `adb` is installed and on your PATH.",
+      );
+    }
+    return h("div", { class: "flex flex-col" }, rows);
   }
 
   deviceRow(device) {
@@ -660,6 +629,45 @@ export class DeviceListPanel {
           icon("download", 13),
           "Install",
         ),
+      ),
+    );
+  }
+
+  avdRow(avdName) {
+    return h(
+      "div",
+      {
+        class:
+          "flex cursor-default items-center gap-2 border-b border-border px-2.5 py-2 text-[12px] opacity-50",
+      },
+      icon("smartphone", 13, "text-muted-foreground"),
+      h(
+        "div",
+        { class: "min-w-0 flex-1" },
+        h(
+          "span",
+          { class: "block truncate text-muted-foreground" },
+          avdName.replace(/_/g, " "),
+        ),
+        h(
+          "span",
+          { class: "text-[10px] text-muted-foreground" },
+          "offline",
+        ),
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          title: `Launch ${avdName}`,
+          class:
+            "flex h-6 shrink-0 items-center gap-1 rounded bg-surface px-2 text-[11px] text-foreground outline-none hover:bg-accent",
+          onclick: (e) => {
+            e.stopPropagation();
+            this.launchAvd(avdName);
+          },
+        },
+        "Launch",
       ),
     );
   }
