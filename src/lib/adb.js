@@ -97,7 +97,6 @@ export function installAndLogCommand(serial, opts = {}) {
   const installCmd = `ANDROID_SERIAL=${s} ${gradlew} ${fullTask}`;
   const launchCmd = `adb -s ${s} shell monkey -p ${p} 1 >/dev/null 2>&1`;
   // app logcat: quote *:S so the shell doesn't expand it as a glob
-  // Add sleep to give the app time to launch before streaming logs
   const logcatCmd = `adb -s ${s} logcat -v brief -T 1 ${p}:V '*:S'`;
 
   return [
@@ -105,8 +104,7 @@ export function installAndLogCommand(serial, opts = {}) {
     "echo",
     'echo "--- Build complete. Launching app..."',
     launchCmd,
-    'echo "--- App launched (waiting 2s for process)..."',
-    "sleep 2",
+    'echo "--- App launched. Streaming logs (Ctrl+C to stop)..."',
     logcatCmd,
   ].join(" && \\\n");
 }
