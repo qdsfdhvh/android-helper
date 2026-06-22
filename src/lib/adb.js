@@ -95,18 +95,18 @@ export function installAndLogCommand(serial, opts = {}) {
   const p = shellQuote(pkg);
 
   const installCmd = `ANDROID_SERIAL=${s} ${gradlew} ${fullTask}`;
-  const launchCmd = `adb -s ${s} shell monkey -p ${p} 1 >/dev/null 2>&1`;
-  // app logcat: quote *:S so the shell doesn't expand it as a glob
+  const launchCmd = `adb -s ${s} shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p ${p} 2>&1 | grep -v "^$"`;
   const logcatCmd = `adb -s ${s} logcat -v brief -T 1 ${p}:V '*:S'`;
 
   return [
     installCmd,
     "echo",
     'echo "--- Build complete. Launching app..."',
-    launchCmd,
-    'echo "--- App launched. Streaming logs (Ctrl+C to stop)..."',
-    logcatCmd,
-  ].join(" && \\\n");
+    `echo "\\$ ${launchCmd}"`,
+    `; ${launchCmd} 2>&1 | tail -3`,  // run even if install fails
+    '; echo "--- Streaming logs (Ctrl+C to stop)..."',
+    `; ${logcatCmd}`,
+  ].join(" \\\n");
 }
 
 /**
